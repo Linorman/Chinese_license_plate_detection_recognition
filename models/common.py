@@ -1,6 +1,7 @@
 # This file contains modules common to various models
 
 import math
+import warnings
 
 import numpy as np
 import requests
@@ -12,11 +13,13 @@ from utils.datasets import letterbox
 from utils.general import non_max_suppression, make_divisible, scale_coords, xyxy2xywh
 from utils.plots import color_list
 
+
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
+
 
 def channel_shuffle(x, groups):
     batchsize, num_channels, height, width = x.data.size()
@@ -30,9 +33,11 @@ def channel_shuffle(x, groups):
     x = x.view(batchsize, -1, height, width)
     return x
 
+
 def DWConv(c1, c2, k=1, s=1, act=True):
     # Depthwise convolution
     return Conv(c1, c2, k, s, g=math.gcd(c1, c2), act=act)
+
 
 class Conv(nn.Module):
     # Standard convolution
@@ -41,7 +46,7 @@ class Conv(nn.Module):
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
         self.bn = nn.BatchNorm2d(c2)
         self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
-        #self.act = self.act = nn.LeakyReLU(0.1, inplace=True) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        # self.act = self.act = nn.LeakyReLU(0.1, inplace=True) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))
@@ -49,22 +54,24 @@ class Conv(nn.Module):
     def fuseforward(self, x):
         return self.act(self.conv(x))
 
+
 class StemBlock(nn.Module):
     def __init__(self, c1, c2, k=3, s=2, p=None, g=1, act=True):
         super(StemBlock, self).__init__()
         self.stem_1 = Conv(c1, c2, k, s, p, g, act)
         self.stem_2a = Conv(c2, c2 // 2, 1, 1, 0)
         self.stem_2b = Conv(c2 // 2, c2, 3, 2, 1)
-        self.stem_2p = nn.MaxPool2d(kernel_size=2,stride=2,ceil_mode=True)
+        self.stem_2p = nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)
         self.stem_3 = Conv(c2 * 2, c2, 1, 1, 0)
 
     def forward(self, x):
-        stem_1_out  = self.stem_1(x)
+        stem_1_out = self.stem_1(x)
         stem_2a_out = self.stem_2a(stem_1_out)
         stem_2b_out = self.stem_2b(stem_2a_out)
         stem_2p_out = self.stem_2p(stem_1_out)
-        out = self.stem_3(torch.cat((stem_2b_out,stem_2p_out),1))
+        out = self.stem_3(torch.cat((stem_2b_out, stem_2p_out), 1))
         return out
+
 
 class Bottleneck(nn.Module):
     # Standard bottleneck
@@ -77,6 +84,7 @@ class Bottleneck(nn.Module):
 
     def forward(self, x):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
 
 class BottleneckCSP(nn.Module):
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
@@ -110,6 +118,7 @@ class C3(nn.Module):
     def forward(self, x):
         return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
 
+
 class ShuffleV2Block(nn.Module):
     def __init__(self, inp, oup, stride):
         super(ShuffleV2Block, self).__init__()
@@ -133,7 +142,8 @@ class ShuffleV2Block(nn.Module):
             self.branch1 = nn.Sequential()
 
         self.branch2 = nn.Sequential(
-            nn.Conv2d(inp if (self.stride > 1) else branch_features, branch_features, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Conv2d(inp if (self.stride > 1) else branch_features, branch_features, kernel_size=1, stride=1,
+                      padding=0, bias=False),
             nn.BatchNorm2d(branch_features),
             nn.SiLU(),
             self.depthwise_conv(branch_features, branch_features, kernel_size=3, stride=self.stride, padding=1),
@@ -155,41 +165,11 @@ class ShuffleV2Block(nn.Module):
             out = torch.cat((self.branch1(x), self.branch2(x)), dim=1)
         out = channel_shuffle(out, 2)
         return out
-    
+
+
 class BlazeBlock(nn.Module):
-    def __init__(self, in_channels,out_channels,mid_channels=None,stride=1):
+    def __init__(self, in_channels, out_channels, mid_channels=None, stride=1):
         super(BlazeBlock, self).__init__()
-        mid_channels = mid_channels or in_channels
-        assert stride in [1, 2]
-        if stride>1:
-            self.use_pool = True
-        else:
-            self.use_pool = False
-
-        self.branch1 = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels,out_channels=mid_channels,kernel_size=5,stride=stride,padding=2,groups=in_channels),
-            nn.BatchNorm2d(mid_channels),
-            nn.Conv2d(in_channels=mid_channels,out_channels=out_channels,kernel_size=1,stride=1),
-            nn.BatchNorm2d(out_channels),
-        )
-
-        if self.use_pool:
-            self.shortcut = nn.Sequential(
-                nn.MaxPool2d(kernel_size=stride, stride=stride),
-                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1),
-                nn.BatchNorm2d(out_channels),
-            )
-
-        self.relu = nn.SiLU(inplace=True)
-
-    def forward(self, x):
-        branch1 = self.branch1(x)
-        out = (branch1+self.shortcut(x)) if self.use_pool else (branch1+x)
-        return self.relu(out)    
-  
-class DoubleBlazeBlock(nn.Module):
-    def __init__(self,in_channels,out_channels,mid_channels=None,stride=1):
-        super(DoubleBlazeBlock, self).__init__()
         mid_channels = mid_channels or in_channels
         assert stride in [1, 2]
         if stride > 1:
@@ -198,12 +178,8 @@ class DoubleBlazeBlock(nn.Module):
             self.use_pool = False
 
         self.branch1 = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=5, stride=stride,padding=2,groups=in_channels),
-            nn.BatchNorm2d(in_channels),
-            nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=1, stride=1),
-            nn.BatchNorm2d(mid_channels),
-            nn.SiLU(inplace=True),
-            nn.Conv2d(in_channels=mid_channels, out_channels=mid_channels, kernel_size=5, stride=1,padding=2),
+            nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=5, stride=stride, padding=2,
+                      groups=in_channels),
             nn.BatchNorm2d(mid_channels),
             nn.Conv2d(in_channels=mid_channels, out_channels=out_channels, kernel_size=1, stride=1),
             nn.BatchNorm2d(out_channels),
@@ -222,8 +198,46 @@ class DoubleBlazeBlock(nn.Module):
         branch1 = self.branch1(x)
         out = (branch1 + self.shortcut(x)) if self.use_pool else (branch1 + x)
         return self.relu(out)
-    
-    
+
+
+class DoubleBlazeBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, mid_channels=None, stride=1):
+        super(DoubleBlazeBlock, self).__init__()
+        mid_channels = mid_channels or in_channels
+        assert stride in [1, 2]
+        if stride > 1:
+            self.use_pool = True
+        else:
+            self.use_pool = False
+
+        self.branch1 = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=5, stride=stride, padding=2,
+                      groups=in_channels),
+            nn.BatchNorm2d(in_channels),
+            nn.Conv2d(in_channels=in_channels, out_channels=mid_channels, kernel_size=1, stride=1),
+            nn.BatchNorm2d(mid_channels),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(in_channels=mid_channels, out_channels=mid_channels, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(mid_channels),
+            nn.Conv2d(in_channels=mid_channels, out_channels=out_channels, kernel_size=1, stride=1),
+            nn.BatchNorm2d(out_channels),
+        )
+
+        if self.use_pool:
+            self.shortcut = nn.Sequential(
+                nn.MaxPool2d(kernel_size=stride, stride=stride),
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, stride=1),
+                nn.BatchNorm2d(out_channels),
+            )
+
+        self.relu = nn.SiLU(inplace=True)
+
+    def forward(self, x):
+        branch1 = self.branch1(x)
+        out = (branch1 + self.shortcut(x)) if self.use_pool else (branch1 + x)
+        return self.relu(out)
+
+
 class SPP(nn.Module):
     # Spatial pyramid pooling layer used in YOLOv3-SPP
     def __init__(self, c1, c2, k=(5, 9, 13)):
@@ -236,6 +250,7 @@ class SPP(nn.Module):
     def forward(self, x):
         x = self.cv1(x)
         return self.cv2(torch.cat([x] + [m(x) for m in self.m], 1))
+
 
 class SPPF(nn.Module):
     # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
@@ -316,6 +331,7 @@ class NMS(nn.Module):
 
     def forward(self, x):
         return non_max_suppression(x[0], conf_thres=self.conf, iou_thres=self.iou, classes=self.classes)
+
 
 class autoShape(nn.Module):
     # input-robust model wrapper for passing cv2/np/PIL/torch inputs. Includes preprocessing, inference and NMS

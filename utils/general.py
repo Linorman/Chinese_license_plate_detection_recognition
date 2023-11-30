@@ -339,7 +339,8 @@ def wh_iou(wh1, wh2):
     # iou = inter / (area1 + area2 - inter)
     return inter / (wh1.prod(2) + wh2.prod(2) - inter)
 
-def jaccard_diou(box_a, box_b, iscrowd:bool=False):
+
+def jaccard_diou(box_a, box_b, iscrowd: bool = False):
     use_batch = True
     if box_a.dim() == 2:
         use_batch = False
@@ -347,15 +348,15 @@ def jaccard_diou(box_a, box_b, iscrowd:bool=False):
         box_b = box_b[None, ...]
 
     inter = intersect(box_a, box_b)
-    area_a = ((box_a[:, :, 2]-box_a[:, :, 0]) *
-              (box_a[:, :, 3]-box_a[:, :, 1])).unsqueeze(2).expand_as(inter)  # [A,B]
-    area_b = ((box_b[:, :, 2]-box_b[:, :, 0]) *
-              (box_b[:, :, 3]-box_b[:, :, 1])).unsqueeze(1).expand_as(inter)  # [A,B]
+    area_a = ((box_a[:, :, 2] - box_a[:, :, 0]) *
+              (box_a[:, :, 3] - box_a[:, :, 1])).unsqueeze(2).expand_as(inter)  # [A,B]
+    area_b = ((box_b[:, :, 2] - box_b[:, :, 0]) *
+              (box_b[:, :, 3] - box_b[:, :, 1])).unsqueeze(1).expand_as(inter)  # [A,B]
     union = area_a + area_b - inter
-    x1 = ((box_a[:, :, 2]+box_a[:, :, 0]) / 2).unsqueeze(2).expand_as(inter)
-    y1 = ((box_a[:, :, 3]+box_a[:, :, 1]) / 2).unsqueeze(2).expand_as(inter)
-    x2 = ((box_b[:, :, 2]+box_b[:, :, 0]) / 2).unsqueeze(1).expand_as(inter)
-    y2 = ((box_b[:, :, 3]+box_b[:, :, 1]) / 2).unsqueeze(1).expand_as(inter)
+    x1 = ((box_a[:, :, 2] + box_a[:, :, 0]) / 2).unsqueeze(2).expand_as(inter)
+    y1 = ((box_a[:, :, 3] + box_a[:, :, 1]) / 2).unsqueeze(2).expand_as(inter)
+    x2 = ((box_b[:, :, 2] + box_b[:, :, 0]) / 2).unsqueeze(1).expand_as(inter)
+    y2 = ((box_b[:, :, 3] + box_b[:, :, 1]) / 2).unsqueeze(1).expand_as(inter)
 
     t1 = box_a[:, :, 1].unsqueeze(2).expand_as(inter)
     b1 = box_a[:, :, 3].unsqueeze(2).expand_as(inter)
@@ -371,7 +372,7 @@ def jaccard_diou(box_a, box_b, iscrowd:bool=False):
     cl = torch.min(l1, l2)
     ct = torch.min(t1, t2)
     cb = torch.max(b1, b2)
-    D = (((x2 - x1)**2 + (y2 - y1)**2) / ((cr-cl)**2 + (cb-ct)**2 + 1e-7))
+    D = (((x2 - x1) ** 2 + (y2 - y1) ** 2) / ((cr - cl) ** 2 + (cb - ct) ** 2 + 1e-7))
     out = inter / area_a if iscrowd else inter / (union + 1e-7) - D ** 0.7
     return out if use_batch else out.squeeze(0)
 
@@ -390,7 +391,7 @@ def non_max_suppression_face(prediction, conf_thres=0.25, iou_thres=0.45, classe
     time_limit = 10.0  # seconds to quit after
     redundant = True  # require redundant detections
     multi_label = nc > 1  # multiple labels per box (adds 0.5ms/img)
-    multi_label=False
+    multi_label = False
     merge = False  # use merge-NMS
 
     t = time.time()
@@ -422,7 +423,7 @@ def non_max_suppression_face(prediction, conf_thres=0.25, iou_thres=0.45, classe
         # Detections matrix nx6 (xyxy, conf, landmarks, cls)
         if multi_label:
             i, j = (x[:, 13:] > conf_thres).nonzero(as_tuple=False).T
-            x = torch.cat((box[i], x[i, j + 13, None], x[i, 5:13] ,j[:, None].float()), 1)
+            x = torch.cat((box[i], x[i, j + 13, None], x[i, 5:13], j[:, None].float()), 1)
         else:  # best class only
             conf, j = x[:, 13:].max(1, keepdim=True)
             x = torch.cat((box, conf, x[:, 5:13], j.float()), 1)[conf.view(-1) > conf_thres]
@@ -440,7 +441,7 @@ def non_max_suppression_face(prediction, conf_thres=0.25, iou_thres=0.45, classe
         c = x[:, 13:14] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
-        #if i.shape[0] > max_det:  # limit detections
+        # if i.shape[0] > max_det:  # limit detections
         #    i = i[:max_det]
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
             # update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)
@@ -470,8 +471,8 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
     # Settings
     # (pixels) minimum and maximum box width and height
     min_wh, max_wh = 2, 4096
-    #max_det = 300  # maximum number of detections per image
-    #max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
+    # max_det = 300  # maximum number of detections per image
+    # max_nms = 30000  # maximum number of boxes into torchvision.ops.nms()
     time_limit = 10.0  # seconds to quit after
     redundant = True  # require redundant detections
     multi_label = nc > 1  # multiple labels per box (adds 0.5ms/img)
@@ -524,7 +525,7 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         n = x.shape[0]  # number of boxes
         if not n:  # no boxes
             continue
-        #elif n > max_nms:  # excess boxes
+        # elif n > max_nms:  # excess boxes
         #    x = x[x[:, 4].argsort(descending=True)[:max_nms]]  # sort by confidence
         x = x[x[:, 4].argsort(descending=True)]  # sort by confidence
 
@@ -532,7 +533,7 @@ def non_max_suppression(prediction, conf_thres=0.25, iou_thres=0.45, classes=Non
         c = x[:, 5:6] * (0 if agnostic else max_wh)  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes (offset by class), scores
         i = torchvision.ops.nms(boxes, scores, iou_thres)  # NMS
-        #if i.shape[0] > max_det:  # limit detections
+        # if i.shape[0] > max_det:  # limit detections
         #    i = i[:max_det]
         if merge and (1 < n < 3E3):  # Merge NMS (boxes merged using weighted mean)
             # update boxes as boxes(i,4) = weights(i,n) * boxes(n,4)

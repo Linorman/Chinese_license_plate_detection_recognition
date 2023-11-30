@@ -1,4 +1,4 @@
-from plate_recognition.plateNet import myNet_ocr,myNet_ocr_color
+from plate_recognition.plate_net import myNet_ocr,myNet_ocr_color
 import torch
 import torch.nn as nn
 import cv2

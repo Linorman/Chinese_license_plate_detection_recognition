@@ -9,23 +9,11 @@ import numpy as np
 from models.experimental import attempt_load
 from utils.datasets import letterbox
 from utils.general import check_img_size, non_max_suppression_face, apply_classifier, scale_coords
-from utils.cv_puttext import cv2ImgAddText
 from plate_recognition.plate_rec import get_plate_result, allFilePath, init_model, cv_imread
 from plate_recognition.double_plate_split_merge import get_split_merge
 
 clors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255)]
 danger = ['危', '险']
-
-
-def order_points(pts):  # 四个点按照左上 右上 右下 左下排列
-    rect = np.zeros((4, 2), dtype="float32")
-    s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
-    diff = np.diff(pts, axis=1)
-    rect[1] = pts[np.argmin(diff)]
-    rect[3] = pts[np.argmax(diff)]
-    return rect
 
 
 def four_point_transform(image, pts):  # 透视变换得到车牌小图
@@ -222,7 +210,6 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, default='result', help='source')  # 图片结果保存的位置
     parser.add_argument('--video', type=str, default='', help='source')  # 视频的路径
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 使用gpu还是cpu进行识别
-    # device =torch.device("cpu")
     opt = parser.parse_args()
     print(opt)
     save_path = opt.output
@@ -237,7 +224,6 @@ if __name__ == '__main__':
     total_1 = sum(p.numel() for p in plate_rec_model.parameters())
     print("detect params: %.2fM,rec params: %.2fM" % (total / 1e6, total_1 / 1e6))
 
-    # plate_color_model =init_color_model(opt.color_model,device)
     time_all = 0
     time_begin = time.time()
     if not opt.video:  # 处理图片
