@@ -1,18 +1,20 @@
 # -*- coding: UTF-8 -*-
 import argparse
-import time
-import os
-import cv2
-import torch
 import copy
-import numpy as np
-from models.experimental import attempt_load
-from utils.datasets import letterbox
-from utils.general import check_img_size, non_max_suppression_face, apply_classifier, scale_coords
-from plate_recognition.plate_rec import get_plate_result, allFilePath, init_model, cv_imread
-from plate_recognition.double_plate_split_merge import get_split_merge
+import os
+import time
 
-clors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255)]
+import cv2
+import numpy as np
+import torch
+
+from models.experimental import attempt_load
+from plate_recognition.double_plate_split_merge import get_split_merge
+from plate_recognition.plate_rec import get_plate_result, allFilePath, init_model, cv_imread
+from utils.datasets import letterbox
+from utils.general import check_img_size, non_max_suppression_face, scale_coords
+
+colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255)]
 danger = ['危', '险']
 
 
@@ -196,6 +198,35 @@ def get_second(capture):
         FrameNumber = capture.get(7)  # 视频文件的帧数
         duration = FrameNumber / rate  # 帧速率/视频总帧数 是时间，除以60之后单位是分钟
         return int(rate), int(FrameNumber), int(duration)
+
+
+def process_image(image_path, detect_model, rec_model, is_color=True, img_size=640):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # 使用gpu还是cpu进行识别
+    detect_model = load_model(detect_model, device)  # 初始化检测模型
+    plate_rec_model = init_model(device, rec_model, is_color=is_color)  # 初始化识别模型
+    # if not os.path.isfile(image_path):  # 目录
+    #     file_list = []
+    #     allFilePath(image_path, file_list)  # 将这个目录下的所有图片文件路径读取到file_list里面
+    #     for img_path in file_list:  # 遍历图片文件
+    #         print(count, img_path, end=" ")
+    #         img = cv_imread(img_path)  # opencv 读取图片
+    #
+    #         if img is None:
+    #             continue
+    #         if img.shape[-1] == 4:  # 图片如果是4个通道的，将其转为3个通道
+    #             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+    #         # detect_one(model,img_path,device)
+    #         dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, img_size,
+    #                                              is_color=is_color)  # 检测以及识别车牌
+    #         print_result(dict_list)
+    # else:
+    img = cv_imread(image_path)
+    if img.shape[-1] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+    # detect_one(model,img_path,device)
+    dict_list = detect_Recognition_plate(detect_model, img, device, plate_rec_model, img_size,
+                                         is_color=is_color)
+    return print_result(dict_list)
 
 
 if __name__ == '__main__':
